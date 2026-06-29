@@ -12,11 +12,11 @@ The entire system is built upon two primary architectural pillars:
 ## 📚 Reference Textbooks
 The theoretical foundation of this project is built upon these industry and academic standards:
 
-*   **Computer Organization and Design** (Patterson & Hennessy): Focuses on modern pipeline techniques, hazards, and overall CPU architecture.
-    ![Cover for Patterson & Hennessy's Computer Organization and Design](assets/covers/patterson_hennessy.jpg)
+* **Computer Organization and Design** (Patterson & Hennessy): Focuses on modern pipeline techniques, hazards, and overall CPU architecture.
+  ![Cover for Patterson & Hennessy's Computer Organization and Design](../assets/covers/patterson_hennessy.jpg)
 
-*   **Digital Design and Computer Architecture** (Harris & Harris): Provides the fundamental building blocks, including single-cycle datapath design and basic digital logic.
-    ![Cover for Harris & Harris's Digital Design and Computer Architecture](assets/covers/Harris_Harris.jpg)
+* **Digital Design and Computer Architecture** (Harris & Harris): Provides the fundamental building blocks, including single-cycle datapath design and basic digital logic.
+  ![Cover for Harris & Harris's Digital Design and Computer Architecture](../assets/covers/Harris_Harris.jpg)
 
 
 ## 🔄 MIPS Implementation Details
