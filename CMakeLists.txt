@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(number_system_converter CXX)
 
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -42,6 +44,7 @@ target_link_libraries(nsc_ui
         PRIVATE ftxui::screen
         PRIVATE ftxui::dom
         PRIVATE ftxui::component
+        PRIVATE Threads::Threads
 )
 
 # ---- Executable: thin entry point -------------------------------------------
