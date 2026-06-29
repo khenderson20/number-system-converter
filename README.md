@@ -9,7 +9,7 @@ This project is a comprehensive C++20 application that started as a live termina
 
 Built using [FTXUI](https://github.com/ArthurSonzogni/FTXUI), the architecture is designed around the **Ripes/DrMIPS pattern**: an abstract `IProcessor` interface allows single-cycle and pipelined implementations to be swapped out seamlessly without requiring UI changes. The processor exposes `PipelineState`, enabling the visualizer to display both models identically across all stages (IF, ID, EX, MEM, WB).
 
-![demo.gif](assets/demo.gif)
+![demo.gif](assets/demo_small.gif)
 
 ## ✨ Key Features
 
