@@ -7,13 +7,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
 FetchContent_Declare(ftxui
-    GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
-    GIT_TAG v7.0.0
+        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+        GIT_TAG v7.0.0
 )
 FetchContent_MakeAvailable(ftxui)
 
 # ---- Core: MIPS core
-add_library(mips_core src/mips/decoder.cpp)
+add_library(mips_core
+        src/mips/decoder.cpp
+        src/mips/alu.cpp
+)
 target_include_directories(mips_core PUBLIC include)
 target_compile_features(mips_core PUBLIC cxx_std_20)
 
@@ -22,7 +25,6 @@ add_library(nsc_core
         src/nsc/parse.cpp
         src/nsc/format.cpp
         src/nsc/converter.cpp
-        src/nsc/parse.cpp
 )
 target_include_directories(nsc_core PUBLIC include)
 target_compile_features(nsc_core PUBLIC cxx_std_20)
@@ -32,6 +34,7 @@ add_library(nsc_ui src/nsc/ui.cpp)
 target_include_directories(nsc_ui PUBLIC include)
 target_link_libraries(nsc_ui
         PUBLIC nsc_core
+        PUBLIC mips_core
         PRIVATE ftxui::screen
         PRIVATE ftxui::dom
         PRIVATE ftxui::component

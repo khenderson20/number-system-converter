@@ -8,6 +8,8 @@
 #include <thread>
 
 #include "nsc/converter.h"
+#include "mips/alu.h"
+#include "mips/decoder.h"
 
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
@@ -28,7 +30,6 @@ int runApp() {
     auto cyan_faint = Color::RGB(0, 60, 58);
     auto teal       = Color::RGB(0, 180, 170);
     auto slate      = Color::RGB(100, 116, 130);
-    auto dark_bg    = Color::RGB(12, 18, 24);
     auto cell_bg    = Color::RGB(20, 35, 42);
 
     // ---- State --------------------------------------------------------------
@@ -166,6 +167,31 @@ int runApp() {
         return hbox(cells);
     };
 
+    // ---- MIPS decode row ----------------------------------------------------
+    // When the hex field holds a value that fits in 32 bits, attempt to decode
+    // it as a MIPS instruction and display the mnemonic inline.
+    // Returns an empty element when there is nothing useful to show.
+
+    auto showMipsInfo = [&]() -> Element {
+        // A 32-bit instruction is at most 8 hex digits.
+        if (hex.empty() || hex.size() > 8) return text("");
+
+        try {
+            auto word = static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
+            auto decoded  = mips::Decoder::decode(word);
+            if (!decoded) return text("");
+
+            std::string mnemonic(mips::Decoder::mnemonic(*decoded));
+            return hbox({
+                text("  MIPS") | bold | color(slate) | size(WIDTH, EQUAL, 10),
+                text(mnemonic) | color(cyan),
+            });
+        } catch (...) {
+            // stoul throws on empty strings, non-hex chars, or overflow.
+            return text("");
+        }
+    };
+
     // ---- Layout -------------------------------------------------------------
 
     auto container = Container::Vertical({in_bin, in_hex, in_dec});
@@ -183,6 +209,7 @@ int runApp() {
                    pulseTitle() | center,
                    separator() | color(cyan_faint),
                    row("  BIN", in_bin, teal),
+                   showMipsInfo(),
                    row("  HEX", in_hex, cyan_dim),
                    row("  DEC", in_dec, teal),
                    separator() | color(cyan_faint),
