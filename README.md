@@ -1,5 +1,9 @@
 
-# 🔢 Number System Converter → MIPS CPU Emulator
+<p align="center">
+  <img src="assets/logo_transparent.png" alt="MIPS Emulator Core"/>
+</p>
+
+# MIPS CPU Emulator
 
 This project is a comprehensive C++20 application that started as a live terminal number system converter (binary, hex, decimal) and has evolved into a sophisticated **pluggable MIPS CPU emulator**. It features interchangeable processor models—single-cycle and 5-stage pipelined—and a detailed datapath visualizer.
 
