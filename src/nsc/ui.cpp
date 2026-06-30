@@ -440,6 +440,82 @@ static Element render_flow_strip(std::size_t frame, bool active) {
     return canvas(std::move(c)) | flex;
 }
 
+    // ─── Ambient oscilloscope panel ─────────────────────────────────────────────
+    // Same visual technique as the startup splash (runSplash, below): a graticule
+    // grid with three phase-shifted sine traces, drawn with DrawPointLine between
+    // consecutive samples so the curves look continuous rather than dotted. Sized
+    // for an in-app panel rather than fullscreen. Tied to live state in a small
+    // way, mirroring render_flow_strip's "calm when idle" rule: phase advances
+    // and amplitude swells while the CPU is auto-running, and settles to a slow
+    // idle breathing pattern while paused/stepping, so it's lively without being
+    // a distraction during step-by-step inspection.
+    static Element render_oscilloscope_panel(std::size_t frame, bool active,
+                                              std::size_t cycle_count) {
+        // D: the (width, height) passed to canvas(w, h, fn) are only a minimum-
+        // size *requirement hint* for FTXUI's layout pass — at actual render
+        // time CanvasNodeBase rebuilds the Canvas to match whatever box this
+        // element ends up assigned (box_.x_max/y_max), then calls `fn` against
+        // that. That's the difference from canvas(std::move(fixed_canvas)),
+        // which bakes in a literal size up front and leaves everything past it
+        // blank if the assigned box turns out bigger — which is exactly what
+        // caused the dead space on the right/bottom previously.
+        constexpr int kMinW = 60, kMinH = 16;
+
+        return canvas(kMinW, kMinH, [frame, active, cycle_count](Canvas& c) {
+            const int W   = c.width();
+            const int H   = c.height();
+            const int mid = H / 2;
+
+            const float ph = static_cast<float>(frame) * (active ? 0.22f : 0.05f);
+
+            // Graticule: dim grid + brighter center axis, same as the splash.
+            for (int x = 0; x < W; x += 20)
+                for (int y = 0; y < H; y += 4)
+                    c.DrawPoint(x, y, true, Color::GrayDark);
+            for (int y = 0; y < H; y += 16)
+                for (int x = 0; x < W; x += 2)
+                    c.DrawPoint(x, y, true, Color::GrayDark);
+            for (int x = 0; x < W; ++x)
+                c.DrawPoint(x, mid, true, Color::Blue);
+
+            auto draw_wave = [&](float amp, float k, float phase, Color col) {
+                int prev_x = 0;
+                int prev_y = mid + static_cast<int>(amp * std::sin(k * 0.0f + phase));
+                for (int x = 1; x < W; ++x) {
+                    const float u = static_cast<float>(x);
+                    const int   y = mid + static_cast<int>(amp * std::sin(k * u + phase));
+                    c.DrawPointLine(prev_x, prev_y, x, y, col);
+                    prev_x = x;
+                    prev_y = y;
+                }
+            };
+
+            // Idle: ~60% amplitude, slow breathing. Running: full swing, livelier.
+            const float base_env = active ? 1.0f : 0.6f;
+            const float env = base_env * (0.8f + 0.2f * std::sin(ph * 0.5f));
+
+            // Scale amplitude to the granted height so the waves use the whole
+            // panel on a large terminal instead of a fixed pixel swing that'd
+            // look tiny once the dead-space bug above is fixed.
+            const float amp_scale = static_cast<float>(H) / 48.0f;
+            draw_wave(20.0f * env * amp_scale, 0.11f,  ph,            Color::CyanLight);
+            draw_wave(14.0f * env * amp_scale, 0.16f,  ph * 1.3f + 1, Color::GreenLight);
+            draw_wave( 8.0f * env * amp_scale, 0.23f, -ph * 1.7f + 2, Color::MagentaLight);
+
+            // DrawText expects x even / y a multiple of 4 (one terminal cell).
+            auto align_x = [](int v) { return std::max(0, (v / 2) * 2); };
+            auto align_y = [](int v) { return std::max(0, (v / 4) * 4); };
+
+            const int title_x = align_x(W / 2 - 18);
+            c.DrawText(title_x, align_y(4), "CLEARCORE",
+                       [](Cell& p) { p.foreground_color = Color::CyanLight; p.bold = true; });
+
+            const int cycle_x = align_x(W / 2 - 26);
+            c.DrawText(cycle_x, align_y(H - 8),
+                       std::format("cycle {:<6}", cycle_count), Color::GrayLight);
+        }) | flex;
+    }
+
     // ─── Startup splash animation ─────────────────────────────────────────────────
     // An oscilloscope-style intro: layered sine waves sweep across a graticule grid
     // like a scope trace, phase-shifting over time so the waveform appears to travel.
@@ -596,10 +672,14 @@ static Element render_flow_strip(std::size_t frame, bool active) {
         int cpu_mode_idx = 0;
 
         // Tabs
+        // D: plain glyphs only — FTXUI's IsFullWidth() table has no entries in
+        // the emoji block (0x1F3xx-0x1F9xx), so codepoint_width() reports 1 for
+        // emoji while terminals render them at 2 cells. That mismatch desyncs
+        // size(WIDTH, GREATER_THAN, ...) and right-edge alignment per glyph used.
         int tab_idx = 0;
         std::vector<std::string> tab_labels = {
-            " 🔢 Converter ", " 📊 CPU Dashboard ", " 🧩 CPU Config ", " 📝 Program Loader ", " 💾 Datapath View",
-            "  Utility Tools", // Added Tab 5 label for consistency, although content is placeholder
+            " Converter ", " CPU Dashboard ", " CPU Config ", " Program Loader ",
+            " Datapath View ", " Utility Tools ",
         };
 
         // ── Helpers ───────────────────────────────────────────────────────────────
@@ -766,12 +846,26 @@ static Element render_flow_strip(std::size_t frame, bool active) {
         };
         Component tab_menu = Menu(&tab_labels, &tab_idx, tab_opt);
 
+        // D: tabs 4 (Datapath View) and 5 (Utility Tools) render purely from cpu
+        // state with no Input/Button/Slider of their own — these empty containers
+        // exist only to keep Container::Tab's child count equal to tab_labels.size()
+        // so index 4/5 don't alias onto an earlier tab's live components.
+        Component dp_focus   = Container::Vertical({});
+        Component util_focus = Container::Vertical({});
+
         Component main_container = Container::Vertical({
             tab_menu,
+            // D: Container::Tab selects children()[*selector % children().size()].
+            // tab_labels has 6 entries (tab_idx 0-5) but this list previously had
+            // only 4 — on tab 4 that wrapped to index 0 (Converter) and on tab 5
+            // to index 1 (CPU controls), silently routing keyboard/mouse focus to
+            // off-screen components (e.g. Enter on tab 5 could fire Run/Reset).
+            // dp_focus/util_focus are empty containers — ComponentBase::Focusable()
+            // returns false with no children, so they correctly absorb focus
+            // without doing anything, matching those tabs' non-interactive content.
             Container::Tab({
                 conv_container, ctrl_container, cfg_container, loader_container,
-                // Added Datapath View (Index 4) and Utility Tools (Index 5)
-                // We need to ensure the tab structure matches tab_labels size
+                dp_focus, util_focus,
             }, &tab_idx),
         });
 
@@ -1215,12 +1309,19 @@ static Element render_flow_strip(std::size_t frame, bool active) {
                 const auto& ps    = cpu->pipeline_state();
                 const bool  is_pl = (cpu_mode == CpuMode::Pipelined);
 
-                // ── IF: instruction at current PC ────────────────────────────────
                 const uint32_t fetch_pc  = cpu->pc();
                 const auto     fetch_raw = cpu->mem().read_word(fetch_pc);
                 const auto     fetch_dec = fetch_raw ? mips::Decoder::decode(*fetch_raw)
                                                      : std::nullopt;
 
+                // ── Ambient oscilloscope panel ─────────────────────────────────────
+                Element scope_panel = window(
+                    text(" ClearCore "),
+                    render_oscilloscope_panel(anim_frame, auto_run.load(),
+                                               cpu->cycle_count())
+                );
+
+                // ── IF: instruction at current PC ────────────────────────────────
                 Element if_panel;
                 if (!fetch_raw) {
                     if_panel = window(text(" IF  Instruction Fetch "),
@@ -1396,6 +1497,8 @@ static Element render_flow_strip(std::size_t frame, bool active) {
 
                 // ── Assemble page ─────────────────────────────────────────────────
                 Elements page;
+                page.push_back(scope_panel);
+                page.push_back(separatorEmpty());
                 page.push_back(if_panel);
                 page.push_back(separatorEmpty());
                 page.push_back(id_panel);
@@ -1420,7 +1523,7 @@ static Element render_flow_strip(std::size_t frame, bool active) {
 
             // ── Root chrome ───────────────────────────────────────────────────────
             Elements header;
-            header.push_back(text(" 🧠 ClearCore MIPS") | bold | color(Color::Cyan));
+            header.push_back(text(" ClearCore MIPS") | bold | color(Color::Cyan));
             header.push_back(filler());
             header.push_back(tab_menu->Render());
 

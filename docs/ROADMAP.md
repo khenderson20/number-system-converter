@@ -1,4 +1,3 @@
-
 # 🗺️ Roadmap: MIPS CPU Emulator
 
 This project's architecture is grounded in academic patterns and published literature on computer organization.
@@ -38,16 +37,20 @@ This project's architecture is grounded in academic patterns and published liter
 * [x] Polymorphic test harness (95 checks, both implementations)
 * [x] Backward-compat shim (`using Cpu = SingleCycleCpu`)
 
-### 🟡 Stage 2 — TUI Execution Visualizer & CPU Switcher
+### ✅ Stage 2 — TUI Execution Visualizer & CPU Switcher
 * [x] CPU mode switcher (select single-cycle or pipelined at runtime)
-* [x] Register file panel (all 32 registers, last-written highlighted)
-* [x] Datapath panel (PC, current instruction, cycle counter, CPU mode)
-* [x] Pipeline visualization (WebRISC-V style: IF/ID/EX/MEM/WB state per cycle, forwarding paths, hazard flags)
-* [ ] **Memory panel** (hex dump, PC-highlighted address, configurable view range)
-* [ ] **Instruction panel** (disassembled fields: opcode, rs, rt, rd, shamt, funct with color coding)
-* [ ] **Adjustable execution speed** (cycle stepping, auto-advance modes)
-* [ ] **Hazard visualization** (Arches-style: stall indicators, forwarding wire highlights, flush markers)
-* [ ] **Run speed controls** (single-step, auto-run, breakpoint capability for Stage 3)
+* [x] Register file panel (all 32 registers, last-written highlighted, signed-decimal annotation)
+* [x] Datapath panel (PC, current instruction, cycle counter, CPU mode) — `Datapath View` tab: IF fetch, ID register reads, EX/MEM/WB control signal snapshot
+* [x] Pipeline visualization (WebRISC-V style: IF/ID/EX/MEM/WB state per cycle, forwarding paths, hazard flags) — `render_pipeline()`
+* [x] **Memory panel** — hex dump, PC-highlighted row, halt-idiom detection, PgUp/PgDn/Home-to-PC navigation (`render_memory()`)
+* [x] **Instruction panel** — disassembled fields (opcode, rs, rt, rd, shamt, funct) with per-field color coding, plus reconstructed assembly text and raw binary breakdown (`render_instr_decode()`, `reconstruct_asm()`)
+* [x] **Adjustable execution speed** — single-step, toggleable auto-run, `Run→Halt`, and a speed slider (10–1000ms/cycle)
+* [x] **Hazard visualization** (Arches-style) — stall/forward/flush badges inline in the pipeline strip, plus a dedicated hazard & forwarding status panel
+* [x] **Run speed controls** — step / auto-run / run-to-halt / reset, all wired to telemetry reset
+
+Beyond original scope, also implemented during this stage: an 8-entry execution trace panel (last committed instructions, WB-stage sourced), a telemetry panel with live gauges for stalls/forwards/flushes and a running CPI readout, an oscilloscope-style startup splash animation, and an ambient "pipeline flow" canvas strip that animates only while auto-run is active.
+
+**Recently fixed (see commit history):** a `Container::Tab` focus-routing defect where tabs 4–5 silently aliased onto tabs 0–1's interactive components via index wraparound (confirmed against FTXUI's `ActiveChild()` source), and emoji in layout-critical text (tab bar, header) that FTXUI's `IsFullWidth()` table doesn't classify as double-width, causing terminal-dependent border misalignment.
 
 **Reference Pattern (WebRISC-V):** Implement "Full Loops" visualization mode showing instruction progression across pipeline stages, with cycle-by-cycle data flow traces. Include forwarding wire annotations (EX/MEM→EX, MEM/WB→EX) and load-use stall bubbles.
 
@@ -64,12 +67,9 @@ This project's architecture is grounded in academic patterns and published liter
 
 ### Stage 4 — Advanced Visualizations & Telemetry
 * [ ] **Instruction × Cycle Grid** (WebRISC-V pattern): visual table showing which instruction occupies each stage per cycle
-* [ ] **Per-Stage Telemetry** (Arches pattern): stall-type logging as first-class visualization
-    - Data hazard counters (load-use stalls)
-    - Control hazard counters (branch/jump flushes)
-    - Forwarding event counters (bypasses performed)
-* [ ] **CPI Analysis** (Cycles Per Instruction): running average, per-instruction breakout
-* [ ] **Performance Summary Panel**: total cycles, total instructions, CPI readout, hazard distribution pie chart
+* [~] **Per-Stage Telemetry** (Arches pattern): stall-type logging as first-class visualization — counters for stalls/forwards/flushes already live in the Stage 2 dashboard (`tel_cycles`, `tel_stalls`, `tel_forwards`, `tel_flushes`); remaining work is per-instruction-type breakout, not just per-cycle totals
+* [~] **CPI Analysis**: running CPI is already computed and displayed (dashboard telemetry panel); remaining work is per-instruction-type breakout and historical tracking across runs
+* [ ] **Performance Summary Panel**: total cycles, total instructions, CPI readout, hazard distribution pie chart (current gauges are live/per-session only, not a post-run summary view)
 * [ ] **Cycle-by-Cycle Breakdown**: annotate each cycle with reason (normal advance, stall type, or flush type)
 * [ ] **"Squashed Loops" Mode** (WebRISC-V): compact visualization for repetitive loop execution
 
@@ -107,3 +107,17 @@ This project's architecture is grounded in academic patterns and published liter
 * [ ] Submit Stage 2 completion to **ACM WCAE** (Workshop on Computer Architecture Education)
 * [ ] Publish in **IEEE Transactions on Education** when full pipeline + telemetry complete
 * [ ] Cross-cite with Ripes, WebRISC-V, Arches in academic community
+
+---
+
+## Suggested next steps
+
+In rough priority order, based on the actual state of `src/` and `include/` as of this update:
+
+1. **Start Stage 3 (Assembler).** This is the next genuinely unstarted milestone — there is no `assembler.h`/`.cpp` anywhere in the tree yet, and Stage 2 is now functionally complete. Recommend scoping the first increment narrowly: a single-pass assembler covering only the R/I-format instructions `Decoder` already supports (no labels, no pseudo-instructions, no directives), emitting the same flat `std::vector<uint32_t>` that `load_hex_file()` consumes today. That gets a working `assembler_test.cpp` into `tests/mips/` (maintaining the project's src/tests parity convention) before the harder parts — label resolution for forward/backward branches, pseudo-instruction expansion, `.data`/`.text` directives — are layered on.
+
+2. **Decide the fate of the "Utility Tools" tab.** It's currently a static placeholder with no content and no focus target (the `util_focus` container intentionally absorbs input and does nothing). Either remove it from `tab_labels` until there's real content, or — more useful — earmark it now as the home for Stage 3's inline `.asm` editor and syntax-error panel, so the assembler work has a UI destination from day one instead of bolting on a seventh tab later.
+
+3. **Promote the existing telemetry into Stage 4's "Performance Summary Panel."** The live gauges in the Stage 2 dashboard (cycles/stalls/forwards/flushes/CPI) are per-session running counters, not a post-run summary. The smallest next step toward Stage 4 is capturing a snapshot of those counters on halt (CPU hits `StepResult::Halt`) and rendering it as a static end-of-run report, before tackling the heavier Instruction × Cycle Grid or Squashed Loops visualizations.
+
+4. **Add a regression test for the tab/focus fix.** `processor_test.cpp` already runs both CPU backends through the same programs to catch behavioral divergence — there's no equivalent guard for UI wiring (e.g. asserting `Container::Tab`'s child count matches `tab_labels.size()` at construction, via a `static_assert`-style runtime check or a small UI smoke test). Worth a one-line guard so a future tab addition can't silently reintroduce the index-wraparound bug.
