@@ -31,7 +31,7 @@
 
 ---
 
-This project started as a live terminal number system converter (binary, hex, decimal) and evolved through deliberate stages into a **pluggable MIPS CPU emulator**. It features interchangeable processor models — single-cycle and 5-stage pipelined — driven by a single `IProcessor` interface, with a cycle-accurate pipeline visualizer, hazard/forwarding badges, and a live datapath view.
+This project started as a live terminal number system converter (binary, hex, decimal) and evolved through deliberate stages into a **pluggable MIPS CPU emulator**. It features interchangeable processor models — single-cycle and 5-stage pipelined — driven by a single `IProcessor` interface, with a cycle-accurate pipeline visualizer and hazard/forwarding badges.
 
 Built on [FTXUI](https://github.com/ArthurSonzogni/FTXUI), the architecture follows the **Ripes/DrMIPS pattern**: the abstract `IProcessor` interface lets `SingleCycleCpu` and `PipelinedCpu` implementations swap in and out without touching the UI layer. Both expose the same `PipelineState`, so the visualizer renders single-cycle and pipelined execution identically across IF, ID, EX, MEM, and WB.
 
@@ -42,7 +42,7 @@ Built on [FTXUI](https://github.com/ArthurSonzogni/FTXUI), the architecture foll
 - **Pipeline Visualization** — all five stages rendered cycle by cycle, with color-coded forwarding paths (EX→EX, WB→EX) and hazard badges (load-use stall, branch/jump flush).
 - **MIPS Instruction Decoding** — enter a raw 32-bit value and see its mnemonic, register fields, and binary breakdown decoded live.
 - **Telemetry & CPI** — running cycle counters, stall/forward/flush tallies, and a live CPI readout.
-- **Datapath View** — a simplified single-cycle data flow trace from instruction memory through the register file, ALU, and back.
+- **Signal Monitor** — an ambient oscilloscope panel that animates while the CPU runs. (A schematic single-cycle *datapath* view is planned — see the roadmap.)
 - **Control & Navigation** — fully keyboard-driven (`Tab` to move between panels, `F10` to step, `Esc` to quit).
 
 ## 🖥️ Tabs
@@ -53,7 +53,7 @@ Built on [FTXUI](https://github.com/ArthurSonzogni/FTXUI), the architecture foll
 | 1 | **CPU Dashboard**  | Registers, pipeline stages, hazard badges, telemetry |
 | 2 | **CPU Config**     | Switch between single-cycle and pipelined backends   |
 | 3 | **Program Loader** | Load a flat instruction-word program into memory     |
-| 4 | **Datapath View**  | Step-by-step single-cycle data flow trace            |
+| 4 | **Signal Monitor** | Ambient oscilloscope animation during execution      |
 
 ## 🚀 Quick Start
 
@@ -95,9 +95,9 @@ The system is split into two decoupled core libraries plus a UI layer, all wired
 
 - **`SingleCycleCpu`** — a basic, non-pipelined datapath (H&H Chapter 7).
 - **`PipelinedCpu`** — a full 5-stage pipeline (IF, ID, EX, MEM, WB) adhering to H&H Chapter 8, including:
-    - Load-use stall detection
-    - Forwarding paths (EX/MEM → EX and MEM/WB → EX)
-    - Hazard detection and control-flow resolution (branch/jump flushes)
+  - Load-use stall detection
+  - Forwarding paths (EX/MEM → EX and MEM/WB → EX)
+  - Hazard detection and control-flow resolution (branch/jump flushes)
 
 ### Core Module Responsibilities
 

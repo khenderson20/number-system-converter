@@ -102,8 +102,16 @@ StepResult PipelinedCpu::step() {
         uint32_t fwd_a = cur_id.rs_val;
         uint32_t fwd_b = cur_id.rt_val;
 
-        // EX/MEM → EX
-        if (cur_ex.valid && cur_ex.ctrl.reg_write && cur_ex.write_reg != 0) {
+        // EX/MEM → EX.
+        // Exclude loads (mem_read): the EX/MEM register holds the *address*
+        // at this point, not the loaded word (the memory access happens in the
+        // MEM stage this same cycle). A load's result can only be forwarded one
+        // cycle later from MEM/WB — which is exactly why the load-use hazard
+        // unit inserts a bubble. Guarding here keeps this correct even if the
+        // hazard logic is ever changed (H&H Figure 8.38: ForwardA/B exclude
+        // the load-result path).
+        if (cur_ex.valid && cur_ex.ctrl.reg_write && !cur_ex.ctrl.mem_read &&
+            cur_ex.write_reg != 0) {
             if (cur_ex.write_reg == cur_id.rs) { fwd_a = cur_ex.alu.value; fwd_ex_a = true; }
             if (cur_ex.write_reg == cur_id.rt) { fwd_b = cur_ex.alu.value; fwd_ex_b = true; }
         }
@@ -205,16 +213,51 @@ StepResult PipelinedCpu::step() {
     // ── ID stage ─────────────────────────────────────────────────────────────
 
     // ── Hazard-detection unit ────────────────────────────────────────────────
-    // If the instruction in EX (cur_id) is a load AND the instruction currently
-    // in ID (cur_if) reads the same register the load writes to, we must stall
-    // for one cycle.  (H&H §8.5, Figure 8.34.)
-    // For loads, the destination register is the I-format rt field; that is
-    // exactly cur_id.rt, stored explicitly in IdEx for this purpose.
+    // If the instruction now in EX (cur_id) is a load AND the instruction now
+    // in ID (cur_if) actually *reads* the register the load writes, stall one
+    // cycle (H&H §8.5, Figure 8.34). The load's destination is its I-format rt.
+    //
+    // The source registers are determined from the decoded form of the ID-stage
+    // instruction, NOT from raw bit positions: J/JAL carry target bits where
+    // rs/rt would be, LUI ignores rs, ALU-immediate/loads do not read rt, and
+    // shifts do not read rs. Reading raw bits would manufacture phantom stalls
+    // that corrupt the cycle/CPI telemetry the visualiser exists to show.
     if (cur_id.valid && cur_id.ctrl.mem_read && cur_if.valid) {
-        const uint8_t if_rs = static_cast<uint8_t>((cur_if.instr >> 21) & 0x1Fu);
-        const uint8_t if_rt = static_cast<uint8_t>((cur_if.instr >> 16) & 0x1Fu);
-        // $zero is hardwired; ignore it as a dependency source.
-        if (cur_id.rt != 0 && (cur_id.rt == if_rs || cur_id.rt == if_rt))
+        int src_a = -1, src_b = -1;     // -1 ⇒ "this instruction reads no such reg"
+        if (const auto if_dec = Decoder::decode(cur_if.instr)) {
+            const DecodedInstr& d = *if_dec;
+            switch (d.format) {
+                case InstrFormat::R:
+                    switch (d.r().funct) {
+                        case FunctCode::SLL: case FunctCode::SRL: case FunctCode::SRA:
+                            src_b = d.r().rt;                       // shift: rt only
+                            break;
+                        case FunctCode::JR: case FunctCode::JALR:
+                            src_a = d.r().rs;                       // reg-jump: rs only
+                            break;
+                        default:
+                            src_a = d.r().rs; src_b = d.r().rt;     // arith: rs, rt
+                            break;
+                    }
+                    break;
+                case InstrFormat::I:
+                    switch (d.opcode) {
+                        case Opcode::LUI:
+                            break;                                  // reads nothing
+                        case Opcode::SW: case Opcode::BEQ: case Opcode::BNE:
+                            src_a = d.i().rs; src_b = d.i().rt;     // base+data / compare
+                            break;
+                        default:
+                            src_a = d.i().rs;                       // load/alu-imm: rs only
+                            break;
+                    }
+                    break;
+                default:
+                    break;                                          // J/JAL: reads nothing
+            }
+        }
+        const int load_dst = static_cast<int>(cur_id.rt);  // $zero is never a dependency
+        if (load_dst != 0 && (load_dst == src_a || load_dst == src_b))
             stall_load_use = true;
     }
 

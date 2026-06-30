@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+#include <gsl/gsl>
 
 namespace mips {
 
@@ -42,7 +43,10 @@ public:
     // Zero the entire address space.
     void reset() noexcept;
 
-    [[nodiscard]] const std::vector<uint8_t>& raw() const noexcept { return data_; }
+    // Read-only span view of the raw memory buffer
+    [[nodiscard]] gsl::span<const std::uint8_t> raw() const noexcept {
+        return {(data_)};
+    }
 
 private:
     [[nodiscard]] bool in_bounds(uint32_t addr, std::size_t n) const noexcept;

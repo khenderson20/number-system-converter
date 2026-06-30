@@ -1,6 +1,7 @@
 #include "mips/memory.h"
 
 #include <algorithm>
+#include <gsl/gsl>
 
 namespace mips {
 
@@ -32,17 +33,17 @@ std::optional<uint8_t> Memory::read_byte(uint32_t addr) const noexcept {
 
 bool Memory::write_word(uint32_t addr, uint32_t value) noexcept {
     if ((addr & 0x3u) != 0 || !in_bounds(addr, 4)) return false;
-    data_[addr]     = static_cast<uint8_t>( value        & 0xFFu);
-    data_[addr + 1] = static_cast<uint8_t>((value >>  8) & 0xFFu);
-    data_[addr + 2] = static_cast<uint8_t>((value >> 16) & 0xFFu);
-    data_[addr + 3] = static_cast<uint8_t>((value >> 24) & 0xFFu);
+    data_[addr]     = gsl::narrow_cast<uint8_t>( value        & 0xFFu);
+    data_[addr + 1] = gsl::narrow_cast<uint8_t>((value >>  8) & 0xFFu);
+    data_[addr + 2] = gsl::narrow_cast<uint8_t>((value >> 16) & 0xFFu);
+    data_[addr + 3] = gsl::narrow_cast<uint8_t>((value >> 24) & 0xFFu);
     return true;
 }
 
 bool Memory::write_half(uint32_t addr, uint16_t value) noexcept {
     if ((addr & 0x1u) != 0 || !in_bounds(addr, 2)) return false;
-    data_[addr]     = static_cast<uint8_t>( value       & 0xFFu);
-    data_[addr + 1] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+    data_[addr]     = gsl::narrow_cast<uint8_t>( value       & 0xFFu);
+    data_[addr + 1] = gsl::narrow_cast<uint8_t>((value >> 8) & 0xFFu);
     return true;
 }
 
@@ -55,13 +56,13 @@ bool Memory::write_byte(uint32_t addr, uint8_t value) noexcept {
 bool Memory::load_words(uint32_t addr, const std::vector<uint32_t>& words) noexcept {
     if (!in_bounds(addr, words.size() * 4)) return false;
     for (std::size_t i = 0; i < words.size(); ++i) {
-        write_word(addr + static_cast<uint32_t>(i * 4), words[i]);
+        write_word(addr + gsl::narrow_cast<uint32_t>(i * 4), words[i]);
     }
     return true;
 }
 
 void Memory::reset() noexcept {
-    std::fill(data_.begin(), data_.end(), uint8_t{0});
+    std::ranges::fill(data_, uint8_t{0});
 }
 
 } // namespace mips

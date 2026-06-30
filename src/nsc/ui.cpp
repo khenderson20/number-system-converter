@@ -4,6 +4,8 @@
 #include "mips/single_cycle_cpu.h"
 #include "mips/pipelined_cpu.h"
 #include "mips/decoder.h"
+#include "mips/disassembler.h"
+#include "mips/program_loader.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
@@ -56,77 +58,26 @@ static Color stage_accent(int idx, const mips::StageSnapshot& s) {
 }
 
 // ─── Hex file loader ──────────────────────────────────────────────────────────
+// Thin UI adapter over mips::load_hex_file (parsing logic lives in mips_core,
+// where it is unit-tested). This layer only wires the parsed words into the
+// processor and formats a status line for the TUI.
 static bool load_hex_file(const std::string& path, mips::IProcessor& cpu,
                           std::string& msg) {
-    std::ifstream f(path);
-    if (!f.is_open()) { msg = std::format("Cannot open '{}'", path); return false; }
-    std::vector<uint32_t> prog;
-    std::string line;
-    int n = 0;
-    while (std::getline(f, line)) {
-        ++n;
-        auto cp = line.find('#');
-        if (cp != std::string::npos) line = line.substr(0, cp);
-        std::string clean;
-        for (char c : line) if (!std::isspace(c)) clean += c;
-        if (clean.empty()) continue;
-        try {
-            size_t used = 0;
-            prog.push_back(static_cast<uint32_t>(std::stoul(clean, &used, 16)));
-        } catch (...) { msg = std::format("Bad hex on line {}", n); return false; }
+    const mips::HexProgram prog = mips::load_hex_file(path);
+    if (!prog.ok()) { msg = *prog.error; return false; }
+    if (cpu.load_program(prog.words, 0)) {
+        msg = std::format("Loaded {} words.", prog.words.size());
+        return true;
     }
-    if (cpu.load_program(prog, 0)) { msg = std::format("Loaded {} words.", prog.size()); return true; }
     msg = "Program too large for memory.";
     return false;
 }
 
 // ─── Assembly mnemonic reconstruction ─────────────────────────────────────────
-// Produces proper lowercase MIPS assembly (e.g. "add $t2, $t0, $t1").
-// Used in the instruction decode panel and execution trace.
+// Thin UI adapter over mips::Disassembler (logic lives in mips_core and is
+// unit-tested in tests/mips/disasm_test.cpp).
 static std::string reconstruct_asm(const mips::DecodedInstr& dec, uint32_t pc) {
-    // Lowercase mnemonic
-    std::string mn;
-    for (char c : mips::Decoder::mnemonic(dec))
-        mn += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-    if (dec.format == mips::InstrFormat::R) {
-        const auto& r = dec.r();
-        const auto rd = kRegNames[r.rd], rs = kRegNames[r.rs], rt = kRegNames[r.rt];
-        switch (r.funct) {
-            case mips::FunctCode::SLL:  case mips::FunctCode::SRL:
-            case mips::FunctCode::SRA:
-                return std::format("{} ${}, ${}, {}", mn, rd, rt, r.shamt);
-            case mips::FunctCode::SLLV: case mips::FunctCode::SRLV:
-                return std::format("{} ${}, ${}, ${}", mn, rd, rt, rs);
-            case mips::FunctCode::JR:
-                return std::format("{} ${}", mn, rs);
-            case mips::FunctCode::JALR:
-                return std::format("{} ${}, ${}", mn, rd, rs);
-            default:
-                return std::format("{} ${}, ${}, ${}", mn, rd, rs, rt);
-        }
-    }
-    if (dec.format == mips::InstrFormat::I) {
-        const auto& i = dec.i();
-        const auto rs = kRegNames[i.rs], rt = kRegNames[i.rt];
-        int32_t simm = mips::Decoder::sign_extend(i.imm);
-        switch (dec.opcode) {
-            case mips::Opcode::LW: case mips::Opcode::LBU:
-            case mips::Opcode::LHU: case mips::Opcode::SW:
-                return std::format("{} ${}, {}(${})", mn, rt, simm, rs);
-            case mips::Opcode::LUI:
-                return std::format("{} ${}, 0x{:04X}", mn, rt, i.imm);
-            case mips::Opcode::BEQ: case mips::Opcode::BNE:
-                return std::format("{} ${}, ${}, {:+d}", mn, rs, rt, simm);
-            default:
-                return std::format("{} ${}, ${}, {:+d}", mn, rt, rs, simm);
-        }
-    }
-    if (dec.format == mips::InstrFormat::J) {
-        uint32_t jaddr = ((pc + 4) & 0xF000'0000u) | (dec.j().target << 2);
-        return std::format("{} 0x{:08X}", mn, jaddr);
-    }
-    return mn + " ???";
+    return mips::Disassembler::to_string(dec, pc);
 }
 
 // ─── Pipeline stage box ───────────────────────────────────────────────────────
